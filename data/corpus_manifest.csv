@@ -1,0 +1,20 @@
+# Wikivoyage corpus for travel-assist. Source: English Wikivoyage dump 2026-09-01.
+# Content is CC BY-SA (dual-licensed 3.0 / 4.0). Every chunk keeps its source URL and every answer cites it.
+# Generated from data/corpus.jsonl by ingestion/run.py — do not hand-edit.
+page_id,title,url,country,continent,article_type,status,n_chunks,revision_id
+19798,Lisbon,https://en.wikivoyage.org/wiki/Lisbon,Portugal,Europe,city,guide,79,5311799
+186249,Lisbon/Baixa,https://en.wikivoyage.org/wiki/Lisbon/Baixa,Portugal,Europe,district,usable,13,5095818
+186251,Lisbon/Bairro Alto,https://en.wikivoyage.org/wiki/Lisbon/Bairro_Alto,Portugal,Europe,district,usable,28,5266030
+186252,Lisbon/Alfama,https://en.wikivoyage.org/wiki/Lisbon/Alfama,Portugal,Europe,district,usable,15,5284242
+186253,Lisbon/Belém,https://en.wikivoyage.org/wiki/Lisbon/Belém,Portugal,Europe,district,usable,14,5284109
+186254,Lisbon/Parque das Nações,https://en.wikivoyage.org/wiki/Lisbon/Parque_das_Nações,Portugal,Europe,district,usable,10,5015018
+186255,Lisbon/North,https://en.wikivoyage.org/wiki/Lisbon/North,Portugal,Europe,district,usable,9,5314075
+28205,Porto,https://en.wikivoyage.org/wiki/Porto,Portugal,Europe,city,guide,72,5337130
+21485,Marrakech,https://en.wikivoyage.org/wiki/Marrakech,Morocco,Africa,city,guide,84,5333622
+5909,Cape Town,https://en.wikivoyage.org/wiki/Cape_Town,South Africa,Africa,city,guide,122,5331410
+7080,Chiang Mai,https://en.wikivoyage.org/wiki/Chiang_Mai,Thailand,Asia,city,guide,167,5338975
+14762,Ho Chi Minh City,https://en.wikivoyage.org/wiki/Ho_Chi_Minh_City,Vietnam,Asia,city,guide,110,5308327
+8796,Cuzco,https://en.wikivoyage.org/wiki/Cuzco,Peru,South America,city,guide,74,5297819
+7487,Christchurch,https://en.wikivoyage.org/wiki/Christchurch,New Zealand,Oceania,city,guide,59,5336303
+28931,Quebec City,https://en.wikivoyage.org/wiki/Quebec_City,Canada,North America,city,guide,73,5322678
+40029,Yellowstone National Park,https://en.wikivoyage.org/wiki/Yellowstone_National_Park,United States,North America,park,guide,102,5327104

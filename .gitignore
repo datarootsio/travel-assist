@@ -1,0 +1,34 @@
+# Environment — never commit credentials
+.env
+.env.local
+*.key
+
+# Working notes, not deliverables.
+plans/
+plans/scratchpad.md
+
+# Instructor-only notes — never commit, students must not see this.
+instructor.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime data (the corpus manifest and sample chunks ARE committed — see data/)
+data/tickets.jsonl
+data/*.sqlite
+data/checkpoints.db
+
+# Local dumps — far too large to commit; see ingestion/README.md
+data/dumps/
+*.xml.bz2
+
+# Local MLflow tracking store and artifacts — per-machine, never committed.
+mlflow.db
+mlruns/
+mlartifacts/

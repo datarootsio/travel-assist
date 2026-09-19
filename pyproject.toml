@@ -1,0 +1,119 @@
+[project]
+name = "travel-assist"
+version = "0.1.0"
+description = "RootsAcademy 2026 — day 1: a RAG travel assistant over a Wikivoyage corpus."
+readme = "README.md"
+requires-python = "==3.12.*"
+
+# EXACT PINS, deliberately. LangChain 1.x is moving fast —
+# several widely-circulated tutorials already don't match the installed
+# package's shapes. Re-verify these on 15 Sep and 22 Sep 2026 and re-run the
+# full suite; do not float these constraints. Resolved 2026-09-01.
+dependencies = [
+    # LangChain. This repo is LangChain, not LangGraph.
+    "langchain==1.3.18",
+    "langchain-core==1.6.1",
+    "langchain-openai==1.6.0",
+    # Storage
+    "psycopg[binary,pool]==3.3.5",
+    "pgvector==0.5.0",
+    # Contracts and configuration
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    # Interface — the CLI is the only interface. There is no web API and no
+    # milestone browser (cleanup D5, D9), which is what retired fastapi,
+    # uvicorn and pygments.
+    "typer==0.27.2",
+    "rich==15.0.0",
+    "httpx==0.28.1",
+    # Observability — MLflow, local file store. No account, no hosted service,
+    # no keys: `mlflow ui` reads ./mlruns and you have trace trees and dashboards.
+    # Same stack as the companion langgraph-course, so participants meet one tool.
+    "mlflow==3.15.2",
+    # Utilities
+    "tiktoken==0.14.0",
+    "python-ulid==4.0.1",
+    "pyyaml==6.0.3",
+]
+
+[project.scripts]
+travel-assist = "travel_assist.cli.main:main"
+
+[dependency-groups]
+dev = [
+    "ruff==0.16.5",
+    "mypy==2.3.1",
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "types-pyyaml==6.0.12.20260815",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/travel_assist"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # bugbear
+    "SIM",    # simplify
+    "ANN",    # annotations — type hints everywhere
+    "T20",    # no print outside cli/
+    "E722",   # no bare except
+    "D",      # docstrings — they are the spec students code against
+]
+ignore = [
+    "D203",   # conflicts with D211
+    "D213",   # conflicts with D212
+    # `**kwargs: Any` is the correct annotation when forwarding options to a
+    # LangChain client. Everything else still needs a real annotation.
+    "ANN401",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/travel_assist/pipeline/chain.py" = ["F401"]  # unimplemented milestone leaves an import unused
+"src/travel_assist/pipeline/citations.py" = ["F401"]  # unimplemented milestone leaves an import unused
+"src/travel_assist/pipeline/context.py" = ["F401"]  # unimplemented milestone leaves an import unused
+"src/travel_assist/pipeline/memory.py" = ["F401"]  # unimplemented milestone leaves an import unused
+"src/travel_assist/pipeline/routing.py" = ["F401"]  # unimplemented milestone leaves an import unused
+"src/travel_assist/pipeline/steps.py" = ["F401"]  # unimplemented milestone leaves an import unused
+"src/travel_assist/retrieval/search.py" = ["F401"]  # unimplemented milestone leaves an import unused
+# The CLI is the one place print/echo is legitimate.
+"src/travel_assist/cli/*" = ["T20"]
+# Ingestion and evals are instructor-run scripts, so `print` is legitimate there.
+"ingestion/*" = ["T20"]
+"scripts/*" = ["T20"]
+"evals/*" = ["T20"]
+"tests/*" = ["D100", "D102", "D103", "D105", "D107", "ANN001", "ANN201", "ANN202"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["pgvector.*", "mlflow.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "live: hits a real external service; skipped by default",
+    "db: needs a local writable Postgres; skipped by default, run with `make test-db`",
+]
+addopts = "-m 'not live and not db'"
