@@ -87,7 +87,6 @@ ignore = [
 "src/travel_assist/pipeline/memory.py" = ["F401"]  # unimplemented milestone leaves an import unused
 "src/travel_assist/pipeline/routing.py" = ["F401"]  # unimplemented milestone leaves an import unused
 "src/travel_assist/pipeline/steps.py" = ["F401"]  # unimplemented milestone leaves an import unused
-"src/travel_assist/retrieval/search.py" = ["F401"]  # unimplemented milestone leaves an import unused
 # The CLI is the one place print/echo is legitimate.
 "src/travel_assist/cli/*" = ["T20"]
 # Ingestion and evals are instructor-run scripts, so `print` is legitimate there.

@@ -91,7 +91,32 @@ def vector_search(
         anything — embedding is metered, and an empty query has no useful nearest
         neighbour.
     """
-    raise NotImplementedError("vector-search — see the docstring above")
+    settings = settings or get_settings()
+
+    if not query.strip():
+        return []
+
+    embeddings = embeddings or get_embeddings(settings=settings)
+    query_vector = str(embeddings.embed_query(query))
+
+    with connect(settings) as conn, conn.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            _SELECT
+            + "1 - (c.embedding <=> %(query)s::vector) AS score"
+            + _FROM
+            # Order by the operator, not by the `score` alias. Both give the same
+            # rows in the same order; only this one can use the HNSW index.
+            + """
+            ORDER BY c.embedding <=> %(query)s::vector, c.id
+            LIMIT %(k)s
+            """,
+            {"query": query_vector, "k": k},
+        )
+        rows = cursor.fetchall()
+
+    return [
+        RetrievedChunk(method="vector", rank=rank, **row) for rank, row in enumerate(rows, start=1)
+    ]
 
 
 def keyword_search(
@@ -117,7 +142,30 @@ def keyword_search(
         query with no searchable terms — empty, punctuation only, or nothing but
         stop words — returns an empty list rather than raising.
     """
-    raise NotImplementedError("keyword-search — see the docstring above")
+    settings = settings or get_settings()
+
+    if not query.strip():
+        return []
+
+    with connect(settings) as conn, conn.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            _SELECT
+            + "ts_rank_cd(c.tsv, websearch_to_tsquery('english', %(query)s)) AS score"
+            + _FROM
+            # `@@` is what uses the GIN index. The ranking function does not, so
+            # the match has to be a WHERE clause, not just an ORDER BY.
+            + """
+            WHERE c.tsv @@ websearch_to_tsquery('english', %(query)s)
+            ORDER BY score DESC, c.id
+            LIMIT %(k)s
+            """,
+            {"query": query, "k": k},
+        )
+        rows = cursor.fetchall()
+
+    return [
+        RetrievedChunk(method="keyword", rank=rank, **row) for rank, row in enumerate(rows, start=1)
+    ]
 
 
 def reciprocal_rank_fusion(
@@ -147,7 +195,27 @@ def reciprocal_rank_fusion(
         descending fused score, re-ranked from 1, with `method="hybrid"`. `score`
         is the fused value — not comparable to either input ranking's `score`.
     """
-    raise NotImplementedError("rrf — see the docstring above")
+    fused_scores: dict[int, float] = {}
+    chunks_by_id: dict[int, RetrievedChunk] = {}
+
+    for ranking in rankings:
+        for chunk in ranking:
+            fused_scores[chunk.chunk_id] = fused_scores.get(chunk.chunk_id, 0.0) + 1 / (
+                k_rrf + chunk.rank
+            )
+            chunks_by_id.setdefault(chunk.chunk_id, chunk)
+
+    def sort_key(chunk: RetrievedChunk) -> tuple[float, int]:
+        return -fused_scores[chunk.chunk_id], chunk.chunk_id
+
+    ordered = sorted(chunks_by_id.values(), key=sort_key)
+
+    return [
+        chunk.model_copy(
+            update={"score": fused_scores[chunk.chunk_id], "rank": rank, "method": "hybrid"}
+        )
+        for rank, chunk in enumerate(ordered, start=1)
+    ]
 
 
 def _matches(chunk: RetrievedChunk, filters: SearchFilters) -> bool:
@@ -195,4 +263,18 @@ def hybrid_search(
         Up to `k` chunks, ordered by descending Reciprocal Rank Fusion score,
         ranked from 1, `method="hybrid"`.
     """
-    raise NotImplementedError("hybrid-search — see the docstring above")
+    settings = settings or get_settings()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        dense_future = pool.submit(
+            vector_search, query, vector_k, settings=settings, embeddings=embeddings
+        )
+        sparse_future = pool.submit(keyword_search, query, keyword_k, settings=settings)
+        dense = dense_future.result()
+        sparse = sparse_future.result()
+
+    if filters is not None:
+        dense = [chunk for chunk in dense if _matches(chunk, filters)]
+        sparse = [chunk for chunk in sparse if _matches(chunk, filters)]
+
+    return reciprocal_rank_fusion([dense, sparse])[:k]
