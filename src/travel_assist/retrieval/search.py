@@ -91,7 +91,32 @@ def vector_search(
         anything — embedding is metered, and an empty query has no useful nearest
         neighbour.
     """
-    raise NotImplementedError("vector-search — see the docstring above")
+    settings = settings or get_settings()
+
+    if not query.strip():
+        return []
+
+    embeddings = embeddings or get_embeddings(settings=settings)
+    query_vector = str(embeddings.embed_query(query))
+
+    with connect(settings) as conn, conn.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            _SELECT
+            + "1 - (c.embedding <=> %(query)s::vector) AS score"
+            + _FROM
+            # Order by the operator, not by the `score` alias. Both give the same
+            # rows in the same order; only this one can use the HNSW index.
+            + """
+            ORDER BY c.embedding <=> %(query)s::vector, c.id
+            LIMIT %(k)s
+            """,
+            {"query": query_vector, "k": k},
+        )
+        rows = cursor.fetchall()
+
+    return [
+        RetrievedChunk(method="vector", rank=rank, **row) for rank, row in enumerate(rows, start=1)
+    ]
 
 
 def keyword_search(
@@ -117,7 +142,30 @@ def keyword_search(
         query with no searchable terms — empty, punctuation only, or nothing but
         stop words — returns an empty list rather than raising.
     """
-    raise NotImplementedError("keyword-search — see the docstring above")
+    settings = settings or get_settings()
+
+    if not query.strip():
+        return []
+
+    with connect(settings) as conn, conn.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            _SELECT
+            + "ts_rank_cd(c.tsv, websearch_to_tsquery('english', %(query)s)) AS score"
+            + _FROM
+            # `@@` is what uses the GIN index. The ranking function does not, so
+            # the match has to be a WHERE clause, not just an ORDER BY.
+            + """
+            WHERE c.tsv @@ websearch_to_tsquery('english', %(query)s)
+            ORDER BY score DESC, c.id
+            LIMIT %(k)s
+            """,
+            {"query": query, "k": k},
+        )
+        rows = cursor.fetchall()
+
+    return [
+        RetrievedChunk(method="keyword", rank=rank, **row) for rank, row in enumerate(rows, start=1)
+    ]
 
 
 def reciprocal_rank_fusion(
