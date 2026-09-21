@@ -112,7 +112,20 @@ def summarise(
         Otherwise, one `SystemMessage` carrying a summary of everything older,
         followed by the `keep_recent` most recent messages verbatim.
     """
-    raise NotImplementedError("compaction — see the docstring above")
+    if len(messages) <= keep_recent:
+        return list(messages)
+
+    settings = settings or get_settings()
+    chat_model = chat_model or get_chat_model(settings=settings)
+
+    to_summarise, recent = messages[:-keep_recent], messages[-keep_recent:]
+    transcript = "\n".join(
+        f"{message.type}: {cast(str, message.content)}" for message in to_summarise
+    )
+    response = chat_model.invoke([SystemMessage(_SUMMARY_INSTRUCTION), HumanMessage(transcript)])
+    summary = cast(str, response.content)
+
+    return [SystemMessage(f"Summary of earlier conversation: {summary}"), *recent]
 
 
 def drop_oldest(messages: Sequence[BaseMessage], *, budget: int) -> list[BaseMessage]:
@@ -128,7 +141,14 @@ def drop_oldest(messages: Sequence[BaseMessage], *, budget: int) -> list[BaseMes
         is never dropped, even if the budget still is not met once every other
         message is gone.
     """
-    raise NotImplementedError("compaction — see the docstring above")
+    result = list(messages)
+    keep_first = bool(result) and isinstance(result[0], SystemMessage)
+    floor = 1 if keep_first else 0
+
+    while history_token_count(result) > budget and len(result) > floor:
+        result.pop(floor)
+
+    return result
 
 
 class CompactingHistory(InMemoryChatMessageHistory):
@@ -193,4 +213,14 @@ class CompactingHistory(InMemoryChatMessageHistory):
         singular form is simply the one place to hook in, not a name chosen to
         dodge anything.
         """
-        raise NotImplementedError("history — see the docstring above")
+        super().add_message(message)
+
+        if history_token_count(self.messages) <= self.budget:
+            return
+
+        if self.strategy == "drop_oldest":
+            self.messages = drop_oldest(self.messages, budget=self.budget)
+        elif self.strategy == "summarise":
+            self.messages = summarise(self.messages, chat_model=self._chat_model)
+        # "none": left over budget on purpose — this is the "degrades without
+        # compaction" side of the demo.

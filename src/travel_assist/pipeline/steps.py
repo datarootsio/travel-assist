@@ -75,4 +75,14 @@ def generate_answer(
     Raises:
         UngroundedCitationError: If the model cites a chunk_id not in `context`.
     """
-    raise NotImplementedError("structured-answer — see the docstring above")
+    settings = settings or get_settings()
+    model = structured_model or cast(
+        "Runnable[LanguageModelInput, DestinationAnswer]",
+        get_chat_model(settings=settings).with_structured_output(DestinationAnswer),
+    )
+
+    prompt = prompt_template.format(query=query, context=_format_context(context))
+    answer = model.invoke([*history, HumanMessage(prompt)] if history else prompt)
+
+    validate_citations(answer, {chunk.chunk_id for chunk in context})
+    return answer

@@ -80,7 +80,20 @@ def validate_citations(answer: DestinationAnswer, included_chunk_ids: Collection
         UngroundedCitationError: If any claim's `source_chunk_id` is set but is
             not a member of `included_chunk_ids`.
     """
-    raise NotImplementedError("structured-answer — see the docstring above")
+    hallucinated = [
+        claim
+        for claim in answer.claims
+        if claim.source_chunk_id is not None and claim.source_chunk_id not in included_chunk_ids
+    ]
+    if not hallucinated:
+        return
+
+    cited = sorted({c.source_chunk_id for c in hallucinated if c.source_chunk_id is not None})
+    raise UngroundedCitationError(
+        f"{len(hallucinated)} claim(s) cite chunk_id(s) {cited}, which were never in the "
+        f"assembled context (only {sorted(included_chunk_ids)} were). The model invented a "
+        "citation rather than reporting that it does not know."
+    )
 
 
 class SelfCheckResult(BaseModel):

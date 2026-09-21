@@ -44,4 +44,24 @@ def assemble_context(chunks: Sequence[RetrievedChunk], *, budget: int) -> list[R
         that would push the running total over `budget`. Logs one line naming
         what was dropped and why, whenever the prefix is shorter than `chunks`.
     """
-    raise NotImplementedError("context-budget — see the docstring above")
+    included: list[RetrievedChunk] = []
+    used = 0
+
+    for index, chunk in enumerate(chunks):
+        if used + chunk.token_count > budget:
+            dropped = chunks[index:]
+            logger.info(
+                "context budget %d exhausted after %d/%d chunks (%d tokens used) — "
+                "dropping %d chunk(s): %s",
+                budget,
+                index,
+                len(chunks),
+                used,
+                len(dropped),
+                ", ".join(f"{c.citation_label()} ({c.token_count}t)" for c in dropped),
+            )
+            break
+        included.append(chunk)
+        used += chunk.token_count
+
+    return included
