@@ -131,4 +131,5 @@ def self_check(answer: DestinationAnswer) -> SelfCheckResult:
         to find, which is a fact about the answer, not a reason to fail it
         here; an empty answer is `generate_answer`'s concern, not self-check's.
     """
-    raise NotImplementedError("self-check — see the docstring above")
+    uncited = [claim for claim in answer.claims if claim.source_chunk_id is None]
+    return SelfCheckResult(passed=not uncited, uncited=uncited)

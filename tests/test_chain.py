@@ -11,7 +11,11 @@ none of this needs a database, an embedding client or a live chat model.
 
 from __future__ import annotations
 
+from typing import Any
+from uuid import UUID
+
 import pytest
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableLambda
@@ -323,3 +327,44 @@ def test_a_destination_outside_the_corpus_is_refused_without_retrieving_live():
     assert turn.route == "out_of_scope"
     assert turn.retrieved is False
     assert turn.answer is None
+
+
+# --------------------------------------------------------------------------
+# One runnable — routing runs inside the traced pipeline, not before it
+# --------------------------------------------------------------------------
+
+
+class _RunRecorder(BaseCallbackHandler):
+    """Records every chain run's name and whether it had a parent run."""
+
+    def __init__(self) -> None:
+        self.runs: list[tuple[str | None, bool]] = []
+
+    def on_chain_start(
+        self,
+        serialized: dict[str, Any],
+        inputs: dict[str, Any],
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self.runs.append((kwargs.get("name"), parent_run_id is not None))
+
+
+def test_routing_runs_inside_the_one_traced_pipeline(monkeypatch):
+    counting_hybrid_search(monkeypatch)
+    decision = RouteDecision(route="destination_question", reason="about Porto")
+    answer = DestinationAnswer(claims=[Claim(text="It has a bookshop.", source_chunk_id=1)])
+    recorder = _RunRecorder()
+
+    answer_query(
+        "what's in Porto",
+        route_model=scripted_route(decision).with_config(run_name="route_model"),
+        structured_model=scripted_answer(answer),
+        destinations=DESTINATIONS,
+        config={"callbacks": [recorder]},
+    )
+
+    assert ("route_model", True) in recorder.runs  # a child of the pipeline run
+    assert sum(1 for _name, has_parent in recorder.runs if not has_parent) == 1  # one root

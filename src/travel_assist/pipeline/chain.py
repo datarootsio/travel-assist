@@ -38,12 +38,20 @@ model can call more than once.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import Runnable, RunnableBranch, RunnableConfig, RunnableLambda
+from langchain_core.runnables import (
+    Runnable,
+    RunnableBranch,
+    RunnableConfig,
+    RunnableLambda,
+    RunnableParallel,
+    RunnablePassthrough,
+)
 from pydantic import BaseModel
 
 from travel_assist.config import Settings, get_settings
@@ -154,7 +162,13 @@ def condense_question(
         there is nothing yet for a reference like "there" to resolve against.
         Otherwise, the model's standalone rewrite.
     """
-    raise NotImplementedError("routing — see the docstring above")
+    if not history:
+        return query
+
+    settings = settings or get_settings()
+    model = chat_model or get_chat_model(settings=settings)
+    chain = _CONDENSE_PROMPT | model | StrOutputParser()
+    return chain.invoke({"history": list(history), "query": query}).strip()
 
 
 def answer_query(
@@ -192,4 +206,70 @@ def answer_query(
     Returns:
         A `PipelineTurn` naming the route taken and what came of it.
     """
-    raise NotImplementedError("routing — see the docstring above")
+    settings = settings or get_settings()
+    known = (
+        destinations if destinations is not None else list_corpus_destinations(settings=settings)
+    )
+    prior_messages = history.messages if history is not None else []
+
+    def _condense(raw: str) -> str:
+        return condense_question(
+            raw, prior_messages, chat_model=condense_chat_model, settings=settings
+        )
+
+    def _route(standalone: str) -> RouteDecision:
+        return classify_route(
+            standalone, structured_model=route_model, settings=settings, destinations=known
+        )
+
+    def _retrieve(state: dict[str, Any]) -> dict[str, Any]:
+        chunks = hybrid_search(state["standalone"], settings=settings)
+        return {**state, "context": assemble_context(chunks, budget=settings.context_token_budget)}
+
+    def _answer(state: dict[str, Any]) -> PipelineTurn:
+        answer = generate_answer(
+            query,
+            state["context"],
+            history=prior_messages,
+            settings=settings,
+            structured_model=structured_model,
+        )
+        return PipelineTurn(
+            route="destination_question",
+            retrieved=True,
+            answer=answer,
+            self_check=self_check(answer),
+            context=state["context"],
+        )
+
+    def _refuse(state: dict[str, Any]) -> PipelineTurn:
+        return PipelineTurn(
+            route="out_of_scope",
+            message=(
+                f"I can only answer questions about the destinations in this corpus "
+                f"({', '.join(_display_names(known))}). {state['decision'].reason}"
+            ),
+        )
+
+    def _clarify(_state: dict[str, Any]) -> PipelineTurn:
+        return PipelineTurn(
+            route="needs_clarification",
+            message=_CLARIFYING_QUESTION.format(destinations=", ".join(_display_names(known))),
+        )
+
+    routed: RunnableBranch[dict[str, Any], PipelineTurn] = RunnableBranch(
+        (lambda state: state["decision"].route == "out_of_scope", RunnableLambda(_refuse)),
+        (lambda state: state["decision"].route == "needs_clarification", RunnableLambda(_clarify)),
+        RunnableLambda(_retrieve) | RunnableLambda(_answer),
+    )
+    pipeline: Runnable[str, PipelineTurn] = (
+        RunnableLambda(_condense)
+        | RunnableParallel(standalone=RunnablePassthrough(), decision=RunnableLambda(_route))
+        | routed
+    )
+    turn = pipeline.invoke(query, config=config)
+
+    if history is not None:
+        history.add_messages([HumanMessage(query), AIMessage(turn.display_text)])
+
+    return turn

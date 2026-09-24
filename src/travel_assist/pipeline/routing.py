@@ -87,4 +87,17 @@ def classify_route(
     Returns:
         The model's routing decision.
     """
-    raise NotImplementedError("routing — see the docstring above")
+    settings = settings or get_settings()
+    known = (
+        destinations if destinations is not None else list_corpus_destinations(settings=settings)
+    )
+
+    model = structured_model or cast(
+        "Runnable[LanguageModelInput, RouteDecision]",
+        get_chat_model(settings=settings).with_structured_output(RouteDecision),
+    )
+
+    prompt = _ROUTING_PROMPT.format(
+        destinations="\n".join(f"- {name}" for name in known), query=query
+    )
+    return model.invoke(prompt)
