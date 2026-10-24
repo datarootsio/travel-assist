@@ -29,7 +29,7 @@ dependencies = [
     # Observability — MLflow, local file store. No account, no hosted service,
     # no keys: `mlflow ui` reads ./mlruns and you have trace trees and dashboards.
     # Same stack as the companion langgraph-course, so participants meet one tool.
-    "mlflow==3.15.2",
+    "mlflow==3.17.2",
     # Utilities
     "tiktoken==0.14.0",
     "python-ulid==4.0.1",
